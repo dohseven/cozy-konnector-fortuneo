@@ -33,6 +33,7 @@ async function start(fields) {
   const $ = await authenticate(fields.login, fields.password)
   log('info', 'Fetching the accounts')
   const accounts = await parseAccounts($)
+  await getBalances(accounts)
   for (let account of accounts) {
     log('info', account)
   }
@@ -84,4 +85,30 @@ function parseAccounts($) {
   )
 
   return accounts
+}
+
+async function getBalances($) {
+  for (let account of $) {
+    if (account.type == 'Compte courant') {
+      log('info', 'getting balance')
+      const page = await request(`${baseUrl}` + account.link)
+      const balance = scrape(
+        page('#tableauConsultationHisto>tbody>tr>td'),
+        {
+          value: {
+            sel: 'strong',
+            parse: cleanBalance
+          }
+        })
+      account.balance = balance.value
+    }
+  }
+}
+
+function cleanBalance(balance) {
+  // Remove everything which is not a ',' or a digit
+  balance = balance.replace(/[^0-9.]/, '')
+  // Replace ',' by '.'
+  balance = balance.replace(',','.')
+  return parseFloat(balance)
 }
