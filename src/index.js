@@ -1,3 +1,6 @@
+// Doc about what to store for Banks:
+// https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md
+
 const {
   BaseKonnector,
   requestFactory,
@@ -5,8 +8,10 @@ const {
   scrape,
   saveBills,
   log,
-  errors
+  errors,
+  updateOrCreate
 } = require('cozy-konnector-libs')
+
 const request = requestFactory({
   // The debug mode shows all the details about HTTP requests and responses. Very useful for
   // debugging but very verbose. This is why it is set to false by default
@@ -46,6 +51,7 @@ async function start(fields) {
     await getBalance(account)
     log('info', account)
   }
+  await addOrUpdateAccounts(accounts)
 }
 
 // Authentication using the [signin function](https://github.com/konnectors/libs/blob/master/packages/cozy-konnector-libs/docs/api.md#module_signin)
@@ -54,6 +60,7 @@ function authenticate(login, password) {
     url: identificationUrl,
     formSelector: 'form[name="acces_identification"]',
     formData: { login: login, passwd: password },
+    encoding: 'latin1',
     // The validate function will check if a logout link exists
     validate: (statusCode, $) => {
       if ($(`a[href='/logoff']`).length === 1) {
@@ -81,6 +88,9 @@ function parseAccounts($) {
                           .end()        // Again go back to selected element
                           .text()       // Get text
                           .slice(3)     // Remove first 3 characters, i.e. 'N° '
+      },
+      label: {
+        sel: 'span'
       },
       type: {
         attr: 'class',
@@ -152,9 +162,42 @@ async function getBalance(account) {
   }
 }
 
+async function addOrUpdateAccounts(accounts) {
+  const cozyAccounts = []
+  for (let account of accounts) {
+    // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankaccounts
+    const cozyAccount = {
+      label: account.label,
+      institutionLabel: 'Fortuneo Banque',
+      balance: account.balance,
+      type: getAccountCozyType(account.type),
+      number: account.number,
+      metadata: {
+        version: 1
+      }
+    }
+    cozyAccounts.push(cozyAccount)
+  }
+
+  return updateOrCreate(cozyAccounts, 'io.cozy.bank.accounts', ['number'])
+}
+
 //
 // Parser helpers
 //
+
+function getAccountCozyType(type) {
+  switch (type) {
+    case AccountTypeEnum.COMPTE_COURANT:
+      return 'Checkings'
+    case AccountTypeEnum.BOURSE:
+    case AccountTypeEnum.ASSURANCE_VIE:
+    case AccountTypeEnum.EPARGNE:
+      return 'Savings'
+    default:
+      throw new Error('Unsupported type ' + type)
+  }
+}
 
 // Get the account type from a string
 function getAccountType(string) {
