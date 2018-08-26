@@ -47,15 +47,17 @@ async function start(fields) {
   log('info', 'Authenticating ...')
   const $ = await authenticate(fields.login, fields.password)
   log('info', 'Fetching the accounts')
-  const accounts = await parseAccounts($)
+  let accounts = await parseAccounts($)
   log('info', 'Fetching the balances')
-  for (let account of accounts) {
-    await getBalance(account)
-  }
+  await getAllBalances(accounts)
   log('info', 'Saving the accounts')
   const savedAccounts = await addOrUpdateAccounts(accounts)
   log('info', 'Saving the balances in balance history')
   await saveBalances(savedAccounts)
+  log('info', 'Fetching the operations')
+  accounts = await getAllOperations(accounts)
+  log('info', 'Saving the operations')
+  await saveAllOperations(accounts, savedAccounts)
 }
 
 // Authentication using the [signin function](https://github.com/konnectors/libs/blob/master/packages/cozy-konnector-libs/docs/api.md#module_signin)
@@ -166,6 +168,13 @@ async function getBalance(account) {
   }
 }
 
+// Retrieve the balance of a list of accounts
+async function getAllBalances(accounts) {
+  for (let account of accounts) {
+    await getBalance(account)
+  }
+}
+
 // Save the accounts in Cozy, or update them if already present
 async function addOrUpdateAccounts(accounts) {
   const cozyAccounts = []
@@ -246,6 +255,125 @@ async function getBalanceHistory(year, accountId) {
   }
 }
 
+// Retrieve the operations of an account
+async function getOperations(account) {
+  let operations = []
+
+  switch (account.type) {
+    case AccountTypeEnum.COMPTE_COURANT:
+      const accountPage = await request(`${baseUrl}${account.link}`)
+      operationsUrl = scrape(
+        accountPage('form[name="ConsultationHistoriqueOperationsForm"]'),
+        {
+          url: {
+            attr: 'action'
+          }
+        }).url
+      const operationsPage = await request(`${baseUrl}${operationsUrl}`, {
+        method: 'POST',
+        form: {
+          dateRechercheDebut: moment().subtract(30, 'days').format('D/MM/YYYY'),
+          nbrEltsParPage: '100'
+        }
+      })
+      operations = scrape(
+        operationsPage,
+        {
+          operationDate: {
+            sel: 'td:nth-of-type(2)',
+            parse: normalizeDate
+          },
+          valueDate: {
+            sel: 'td:nth-of-type(3)',
+            parse: normalizeDate
+          },
+          label: {
+            sel: 'td:nth-of-type(4)',
+            fn: $node => $node.clone()                // Clone the element
+                              .children()             // Select all the children
+                              .remove()               // Remove all the children
+                              .end()                  // Again go back to selected element
+                              .text()                 // Get text
+                              .replace(/\n|\t/gm, '') // Trim text of extra characters
+          },
+          debit: {
+            sel: 'td:nth-of-type(5)',
+            parse: cleanAmount
+          },
+          credit: {
+            sel: 'td:nth-of-type(6)',
+            parse: cleanAmount
+          },
+        },
+        '#tabHistoriqueOperations>tbody>tr'
+      )
+      break;
+
+    case AccountTypeEnum.BOURSE:
+    case AccountTypeEnum.ASSURANCE_VIE:
+    case AccountTypeEnum.EPARGNE:
+      log('info', `Operations retrieval not implemented for account type: ${account.type}`)
+      break;
+
+    default:
+      log('warn', `Unable to retrieve balance of account type: ${account.type}`)
+      break;
+  }
+
+  return operations
+}
+
+// Retrieve the operations of list of accounts
+async function getAllOperations(accounts) {
+  for (let account of accounts) {
+    account.operations = await getOperations(account)
+  }
+
+  return accounts
+}
+
+// Save the operations of an account
+async function saveOperations(account, cozyAccount) {
+  if (account.operations) {
+    const cozyOperations = []
+
+    for (let operation of account.operations) {
+      // Create Cozy operations.
+      // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankoperations
+      const cozyOperation = {
+        label: operation.label,
+        type: 'none',
+        date: operation.valueDate.toString(),
+        dateOperation: operation.operationDate.toString(),
+        dateImport: moment().toString(),
+        amount: (isNaN(operation.credit) ? operation.debit : operation.credit),
+        currency: 'EUR',
+        account: cozyAccount._id,
+        metadata: {
+          version: 1
+        }
+      }
+      cozyOperations.push(cozyOperation)
+    }
+
+    updateOrCreate(cozyOperations, 'io.cozy.bank.operations', ['account', 'amount', 'date'])
+  }
+}
+
+// Save the operations of list of accounts
+async function saveAllOperations(accounts, cozyAccounts) {
+  for (let account of accounts) {
+    // Find associated Cozy account
+    const cozyAccount = cozyAccounts.find(function(element) {
+      return element.number == account.number
+    })
+    if (!cozyAccount) {
+      throw new Error(`Cozy account associated to ${account.number} not found!`)
+    }
+    // Save the operations
+    saveOperations(account, cozyAccount)
+  }
+}
 
 // Convert an enum type to a Cozy account type
 function getAccountCozyType(type) {
@@ -285,16 +413,28 @@ function getAccountType(string) {
   }
 }
 
-// Clean the account balance string
-function cleanBalance(string) {
-  // Remove everything which is not a ',' or a digit
-  string = string.replace(/[^0-9.]/, '')
+// Clean the operation amount string
+function cleanAmount(string) {
+  // Remove everything which is not a ',', a '+/-', or a digit
+  string = string.replace(/[^0-9,\-\+]/, '')
   // Replace ',' by '.'
   string = string.replace(',','.')
   // Get the number from the string
-  let balance = parseFloat(string)
+  return parseFloat(string)
+}
+
+// Clean the account balance string
+// Throw an error if this is not possible as it should not happen
+function cleanBalance(string) {
+  let balance = cleanAmount(string)
   if (isNaN(balance)) {
     throw new Error('Failed to parse the balance')
   }
   return balance
+}
+
+// Convert a date string to a date
+function normalizeDate(date) {
+  // String format: dd/mm/yyyy
+  return new Date(date.slice(6, 10) + '-' + date.slice(3, 5) + '-' + date.slice(0, 2) + 'Z')
 }
