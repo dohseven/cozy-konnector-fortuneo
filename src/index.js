@@ -4,7 +4,8 @@ const {
   signin,
   scrape,
   saveBills,
-  log
+  log,
+  errors
 } = require('cozy-konnector-libs')
 const request = requestFactory({
   // The debug mode shows all the details about HTTP requests and responses. Very useful for
@@ -22,6 +23,13 @@ const request = requestFactory({
 const baseUrl = 'https://mabanque.fortuneo.fr'
 const localizator = 'fr'
 const identificationUrl = `${baseUrl}/${localizator}/identification.jsp`
+const AccountTypeEnum = {
+  UNKNOWN:        0,
+  COMPTE_COURANT: 1,
+  BOURSE:         2,
+  ASSURANCE_VIE:  3,
+  EPARGNE:        4
+}
 
 module.exports = new BaseKonnector(start)
 
@@ -33,8 +41,9 @@ async function start(fields) {
   const $ = await authenticate(fields.login, fields.password)
   log('info', 'Fetching the accounts')
   const accounts = await parseAccounts($)
-  await getBalances(accounts)
+  log('info', 'Fetching the balances')
   for (let account of accounts) {
+    await getBalance(account)
     log('info', account)
   }
 }
@@ -65,7 +74,7 @@ function parseAccounts($) {
     $,
     {
       number: {
-        sel: '.numero_compte',
+        sel: 'a.numero_compte',
         fn: $node => $node.clone()      // Clone the element
                           .children()   // Select all the children
                           .remove()     // Remove all the children
@@ -74,41 +83,113 @@ function parseAccounts($) {
                           .slice(3)     // Remove first 3 characters, i.e. 'N° '
       },
       type: {
-        sel: 'a>span'
+        attr: 'class',
+        parse: getAccountType
       },
       link: {
         sel: 'a',
         attr: 'href'
       }
     },
-    '#menu_mes_comptes>.slide_wrapper>ul>li>div'
+    '#menu_mes_comptes>div.slide_wrapper>ul>li>div'
   )
 
   return accounts
 }
 
-async function getBalances($) {
-  for (let account of $) {
-    if (account.type == 'Compte courant') {
-      log('info', 'getting balance')
-      const page = await request(`${baseUrl}` + account.link)
-      const balance = scrape(
-        page('#tableauConsultationHisto>tbody>tr>td'),
+// Retrieve the balance of an account
+async function getBalance(account) {
+  const accountPage = await request(`${baseUrl}` + account.link)
+
+  switch (account.type) {
+    case AccountTypeEnum.COMPTE_COURANT:
+      account.balance = scrape(
+        accountPage('#tableauConsultationHisto>tbody>tr>td'),
         {
           value: {
             sel: 'strong',
             parse: cleanBalance
           }
-        })
-      account.balance = balance.value
-    }
+        }).value
+      break;
+
+    case AccountTypeEnum.BOURSE:
+      account.balance = scrape(
+        accountPage('#valorisation_compte>table>tbody>tr'),
+        {
+          value: {
+            sel: 'td.gras',
+            parse: cleanBalance
+          }
+        }).value
+      break;
+
+    case AccountTypeEnum.ASSURANCE_VIE:
+      account.balance = scrape(
+        accountPage('div.synthese_vie>div>div.colonne_gauche>div>p>span'),
+        {
+          value: {
+            sel: 'strong',
+            parse: cleanBalance
+          }
+        }).value
+      break;
+
+    case AccountTypeEnum.EPARGNE:
+      account.balance = scrape(
+        accountPage('div.synthese_livret_cat>div>div.colonne_gauche>div.arrow_line>a'),
+        {
+          value: {
+            sel: 'p.synthese_data_line_right_text',
+            parse: cleanBalance
+          }
+        }).value
+      break;
+
+    default:
+      log('warn', 'Unable to retrieve balance of account type ' + account.type)
+      break;
   }
 }
 
-function cleanBalance(balance) {
+//
+// Parser helpers
+//
+
+// Get the account type from a string
+function getAccountType(string) {
+  // Keep only the first class: e.g. 'cco compte' -> 'cco'
+  switch (string.replace(/\s+compte$/, '')) {
+    case 'cco':
+    case 'esp':
+      return AccountTypeEnum.COMPTE_COURANT
+
+    case 'ord':
+    case 'pea':
+      return AccountTypeEnum.BOURSE
+
+    case 'vie':
+      return AccountTypeEnum.ASSURANCE_VIE
+
+    case 'liv_a':
+    case 'liv_d':
+      return AccountTypeEnum.EPARGNE
+
+    default:
+      return AccountTypeEnum.UNKNOWN
+  }
+}
+
+// Clean the account balance string
+function cleanBalance(string) {
   // Remove everything which is not a ',' or a digit
-  balance = balance.replace(/[^0-9.]/, '')
+  string = string.replace(/[^0-9.]/, '')
   // Replace ',' by '.'
-  balance = balance.replace(',','.')
-  return parseFloat(balance)
+  string = string.replace(',','.')
+  // Get the number from the string
+  let balance = parseFloat(string)
+  if (isNaN(balance)) {
+    throw new Error('Failed to parse the balance')
+  }
+  return balance
 }
