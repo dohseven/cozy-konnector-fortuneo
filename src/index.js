@@ -9,7 +9,8 @@ const {
   saveBills,
   log,
   errors,
-  updateOrCreate
+  updateOrCreate,
+  cozyClient
 } = require('cozy-konnector-libs')
 
 const request = requestFactory({
@@ -24,6 +25,7 @@ const request = requestFactory({
   // This allows request-promise to keep cookies between requests
   jar: true
 })
+const moment = require('moment')
 
 const baseUrl = 'https://mabanque.fortuneo.fr'
 const localizator = 'fr'
@@ -51,6 +53,7 @@ async function start(fields) {
     await getBalance(account)
   }
   const savedAccounts = await addOrUpdateAccounts(accounts)
+  await saveBalances(savedAccounts)
 }
 
 // Authentication using the [signin function](https://github.com/konnectors/libs/blob/master/packages/cozy-konnector-libs/docs/api.md#module_signin)
@@ -180,6 +183,56 @@ async function addOrUpdateAccounts(accounts) {
   }
 
   return updateOrCreate(cozyAccounts, 'io.cozy.bank.accounts', ['number'])
+}
+
+async function saveBalances(accounts) {
+  const now = moment()
+  const todayAsString = now.format('YYYY-MM-DD')
+  const currentYear = now.year()
+  const balanceHistories = []
+
+  for (let account of accounts) {
+    const balanceHistory = await getBalanceHistory(currentYear, account._id)
+    balanceHistory.balances[todayAsString] = account.balance
+    balanceHistories.push(balanceHistory)
+  }
+
+  return updateOrCreate(balanceHistories, 'io.cozy.bank.balancehistories', ['_id'])
+}
+
+async function getBalanceHistory(year, accountId) {
+  const index = await cozyClient.data.defineIndex(
+    'io.cozy.bank.balancehistories',
+    ['year', 'relationships.account.data._id']
+  )
+  const options = {
+    selector: {
+      year,
+      'relationships.account.data._id': accountId
+    },
+    limit: 1
+  }
+  const [balance] = await cozyClient.data.query(index, options)
+
+  if (balance) {
+    return balance
+  }
+
+  return {
+    year,
+    balances: {},
+    metadata: {
+      version: 1
+    },
+    relationships: {
+      account: {
+        data: {
+          _id: accountId,
+          _type: 'io.cozy.bank.accounts'
+        }
+      }
+    }
+  }
 }
 
 //
