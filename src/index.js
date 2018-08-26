@@ -49,9 +49,8 @@ async function start(fields) {
   log('info', 'Fetching the balances')
   for (let account of accounts) {
     await getBalance(account)
-    log('info', account)
   }
-  await addOrUpdateAccounts(accounts)
+  const savedAccounts = await addOrUpdateAccounts(accounts)
 }
 
 // Authentication using the [signin function](https://github.com/konnectors/libs/blob/master/packages/cozy-konnector-libs/docs/api.md#module_signin)
@@ -109,7 +108,7 @@ function parseAccounts($) {
 
 // Retrieve the balance of an account
 async function getBalance(account) {
-  const accountPage = await request(`${baseUrl}` + account.link)
+  const accountPage = await request(`${baseUrl}${account.link}`)
 
   switch (account.type) {
     case AccountTypeEnum.COMPTE_COURANT:
@@ -157,13 +156,14 @@ async function getBalance(account) {
       break;
 
     default:
-      log('warn', 'Unable to retrieve balance of account type ' + account.type)
+      log('warn', `Unable to retrieve balance of account type: ${account.type}`)
       break;
   }
 }
 
 async function addOrUpdateAccounts(accounts) {
   const cozyAccounts = []
+
   for (let account of accounts) {
     // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankaccounts
     const cozyAccount = {
@@ -195,7 +195,7 @@ function getAccountCozyType(type) {
     case AccountTypeEnum.EPARGNE:
       return 'Savings'
     default:
-      throw new Error('Unsupported type ' + type)
+      throw new Error(`Unsupported type: ${type}`)
   }
 }
 
