@@ -52,7 +52,9 @@ async function start(fields) {
   for (let account of accounts) {
     await getBalance(account)
   }
+  log('info', 'Saving the accounts')
   const savedAccounts = await addOrUpdateAccounts(accounts)
+  log('info', 'Saving the balances in balance history')
   await saveBalances(savedAccounts)
 }
 
@@ -77,7 +79,7 @@ function authenticate(login, password) {
 
 // This function retrieves all the accounts of the user.
 function parseAccounts($) {
-  // You can find documentation about the scrape function here :
+  // You can find documentation about the scrape function here:
   // https://github.com/konnectors/libs/blob/master/packages/cozy-konnector-libs/docs/api.md#scrape
   const accounts = scrape(
     $,
@@ -164,10 +166,12 @@ async function getBalance(account) {
   }
 }
 
+// Save the accounts in Cozy, or update them if already present
 async function addOrUpdateAccounts(accounts) {
   const cozyAccounts = []
 
   for (let account of accounts) {
+    // Create Cozy accounts.
     // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankaccounts
     const cozyAccount = {
       label: account.label,
@@ -185,6 +189,7 @@ async function addOrUpdateAccounts(accounts) {
   return updateOrCreate(cozyAccounts, 'io.cozy.bank.accounts', ['number'])
 }
 
+// Save the accounts balance in the balance histories of Cozy
 async function saveBalances(accounts) {
   const now = moment()
   const todayAsString = now.format('YYYY-MM-DD')
@@ -200,7 +205,10 @@ async function saveBalances(accounts) {
   return updateOrCreate(balanceHistories, 'io.cozy.bank.balancehistories', ['_id'])
 }
 
+// Retrieve the balance history for a year and an account.
+// If none is found, create a new one.
 async function getBalanceHistory(year, accountId) {
+  // Options used to find the balance history
   const index = await cozyClient.data.defineIndex(
     'io.cozy.bank.balancehistories',
     ['year', 'relationships.account.data._id']
@@ -212,12 +220,15 @@ async function getBalanceHistory(year, accountId) {
     },
     limit: 1
   }
-  const [balance] = await cozyClient.data.query(index, options)
+  const [balanceHistory] = await cozyClient.data.query(index, options)
 
-  if (balance) {
-    return balance
+  // Check if a balance history was found
+  if (balanceHistory) {
+    return balanceHistory
   }
 
+  // Balance history not found, create a new one.
+  // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankbalancehistories
   return {
     year,
     balances: {},
@@ -235,10 +246,8 @@ async function getBalanceHistory(year, accountId) {
   }
 }
 
-//
-// Parser helpers
-//
 
+// Convert an enum type to a Cozy account type
 function getAccountCozyType(type) {
   switch (type) {
     case AccountTypeEnum.COMPTE_COURANT:
