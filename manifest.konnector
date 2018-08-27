@@ -9,6 +9,7 @@
   "editor": "dohseven",
   "vendor_link": "https://mabanque.fortuneo.fr",
   "categories": ["banking"],
+  "frequency": "daily",
   "fields": {
     "login": {
       "type": "text"
