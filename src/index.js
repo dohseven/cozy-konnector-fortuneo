@@ -30,6 +30,7 @@ const moment = require('moment')
 const baseUrl = 'https://mabanque.fortuneo.fr'
 const localizator = 'fr'
 const identificationUrl = `${baseUrl}/${localizator}/identification.jsp`
+const operationsUrl = `${baseUrl}/${localizator}/prive/mes-comptes/compte-courant/consulter-situation/consulter-solde.jsp`
 const AccountTypeEnum = {
   UNKNOWN:        0,
   COMPTE_COURANT: 1,
@@ -261,18 +262,14 @@ async function getOperations(account) {
 
   switch (account.type) {
     case AccountTypeEnum.COMPTE_COURANT:
+    case AccountTypeEnum.EPARGNE:
+      // First go to the account page, as it sets some internal variables
       const accountPage = await request(`${baseUrl}${account.link}`)
-      operationsUrl = scrape(
-        accountPage('form[name="ConsultationHistoriqueOperationsForm"]'),
-        {
-          url: {
-            attr: 'action'
-          }
-        }).url
-      const operationsPage = await request(`${baseUrl}${operationsUrl}`, {
+      // Then post the operations retrieval form
+      const operationsPage = await request(operationsUrl, {
         method: 'POST',
         form: {
-          dateRechercheDebut: moment().subtract(30, 'days').format('D/MM/YYYY'),
+          dateRechercheDebut: moment().subtract(10, 'years').format('D/MM/YYYY'),
           nbrEltsParPage: '100'
         }
       })
@@ -311,12 +308,11 @@ async function getOperations(account) {
 
     case AccountTypeEnum.BOURSE:
     case AccountTypeEnum.ASSURANCE_VIE:
-    case AccountTypeEnum.EPARGNE:
       log('info', `Operations retrieval not implemented for account type: ${account.type}`)
       break;
 
     default:
-      log('warn', `Unable to retrieve balance of account type: ${account.type}`)
+      log('warn', `Unable to retrieve operations of account type: ${account.type}`)
       break;
   }
 
@@ -342,7 +338,7 @@ async function saveOperations(account, cozyAccount) {
       // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankoperations
       const cozyOperation = {
         label: operation.label,
-        type: 'none',
+        type: 'none', // FixMe: Parse label to get the type?
         date: operation.valueDate.toString(),
         dateOperation: operation.operationDate.toString(),
         dateImport: moment().toString(),
