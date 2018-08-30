@@ -6,9 +6,7 @@ const {
   requestFactory,
   signin,
   scrape,
-  saveBills,
   log,
-  errors,
   updateOrCreate,
   cozyClient
 } = require('cozy-konnector-libs')
@@ -32,11 +30,11 @@ const localizator = 'fr'
 const identificationUrl = `${baseUrl}/${localizator}/identification.jsp`
 const operationsUrl = `${baseUrl}/${localizator}/prive/mes-comptes/compte-courant/consulter-situation/consulter-solde.jsp`
 const AccountTypeEnum = {
-  UNKNOWN:        0,
+  UNKNOWN: 0,
   COMPTE_COURANT: 1,
-  BOURSE:         2,
-  ASSURANCE_VIE:  3,
-  EPARGNE:        4
+  BOURSE: 2,
+  ASSURANCE_VIE: 3,
+  EPARGNE: 4
 }
 
 module.exports = new BaseKonnector(start)
@@ -89,12 +87,14 @@ function parseAccounts($) {
     {
       number: {
         sel: 'a.numero_compte',
-        fn: $node => $node.clone()      // Clone the element
-                          .children()   // Select all the children
-                          .remove()     // Remove all the children
-                          .end()        // Again go back to selected element
-                          .text()       // Get text
-                          .slice(3)     // Remove first 3 characters, i.e. 'N° '
+        fn: $node =>
+          $node
+            .clone() // Clone the element
+            .children() // Select all the children
+            .remove() // Remove all the children
+            .end() // Again go back to selected element
+            .text() // Get text
+            .slice(3) // Remove first 3 characters, i.e. 'N° '
       },
       label: {
         sel: 'span'
@@ -127,8 +127,9 @@ async function getBalance(account) {
             sel: 'strong',
             parse: cleanBalance
           }
-        }).value
-      break;
+        }
+      ).value
+      break
 
     case AccountTypeEnum.BOURSE:
       account.balance = scrape(
@@ -138,8 +139,9 @@ async function getBalance(account) {
             sel: 'td.gras',
             parse: cleanBalance
           }
-        }).value
-      break;
+        }
+      ).value
+      break
 
     case AccountTypeEnum.ASSURANCE_VIE:
       account.balance = scrape(
@@ -149,23 +151,27 @@ async function getBalance(account) {
             sel: 'strong',
             parse: cleanBalance
           }
-        }).value
-      break;
+        }
+      ).value
+      break
 
     case AccountTypeEnum.EPARGNE:
       account.balance = scrape(
-        accountPage('div.synthese_livret_cat>div>div.colonne_gauche>div.arrow_line>a'),
+        accountPage(
+          'div.synthese_livret_cat>div>div.colonne_gauche>div.arrow_line>a'
+        ),
         {
           value: {
             sel: 'p.synthese_data_line_right_text',
             parse: cleanBalance
           }
-        }).value
-      break;
+        }
+      ).value
+      break
 
     default:
       log('warn', `Unable to retrieve balance of account type: ${account.type}`)
-      break;
+      break
   }
 }
 
@@ -212,7 +218,9 @@ async function saveBalances(accounts) {
     balanceHistories.push(balanceHistory)
   }
 
-  return updateOrCreate(balanceHistories, 'io.cozy.bank.balancehistories', ['_id'])
+  return updateOrCreate(balanceHistories, 'io.cozy.bank.balancehistories', [
+    '_id'
+  ])
 }
 
 // Retrieve the balance history for a year and an account.
@@ -259,17 +267,20 @@ async function getBalanceHistory(year, accountId) {
 // Retrieve the operations of an account
 async function getOperations(account) {
   let operations = []
+  let operationsPage
 
   switch (account.type) {
     case AccountTypeEnum.COMPTE_COURANT:
     case AccountTypeEnum.EPARGNE:
       // First go to the account page, as it sets some internal variables
-      const accountPage = await request(`${baseUrl}${account.link}`)
+      await request(`${baseUrl}${account.link}`)
       // Then post the operations retrieval form
-      const operationsPage = await request(operationsUrl, {
+      operationsPage = await request(operationsUrl, {
         method: 'POST',
         form: {
-          dateRechercheDebut: moment().subtract(10, 'years').format('D/MM/YYYY'),
+          dateRechercheDebut: moment()
+            .subtract(10, 'years')
+            .format('D/MM/YYYY'),
           nbrEltsParPage: '100'
         }
       })
@@ -286,12 +297,14 @@ async function getOperations(account) {
           },
           label: {
             sel: 'td:nth-of-type(4)',
-            fn: $node => $node.clone()                // Clone the element
-                              .children()             // Select all the children
-                              .remove()               // Remove all the children
-                              .end()                  // Again go back to selected element
-                              .text()                 // Get text
-                              .replace(/\n|\t/gm, '') // Trim text of extra characters
+            fn: $node =>
+              $node
+                .clone() // Clone the element
+                .children() // Select all the children
+                .remove() // Remove all the children
+                .end() // Again go back to selected element
+                .text() // Get text
+                .replace(/\n|\t/gm, '') // Trim text of extra characters
           },
           debit: {
             sel: 'td:nth-of-type(5)',
@@ -300,20 +313,26 @@ async function getOperations(account) {
           credit: {
             sel: 'td:nth-of-type(6)',
             parse: cleanAmount
-          },
+          }
         },
         '#tabHistoriqueOperations>tbody>tr'
       )
-      break;
+      break
 
     case AccountTypeEnum.BOURSE:
     case AccountTypeEnum.ASSURANCE_VIE:
-      log('info', `Operations retrieval not implemented for account type: ${account.type}`)
-      break;
+      log(
+        'info',
+        `Operations retrieval not implemented for account type: ${account.type}`
+      )
+      break
 
     default:
-      log('warn', `Unable to retrieve operations of account type: ${account.type}`)
-      break;
+      log(
+        'warn',
+        `Unable to retrieve operations of account type: ${account.type}`
+      )
+      break
   }
 
   return operations
@@ -342,7 +361,7 @@ async function saveOperations(account, cozyAccount) {
         date: operation.valueDate.toString(),
         dateOperation: operation.operationDate.toString(),
         dateImport: moment().toString(),
-        amount: (isNaN(operation.credit) ? operation.debit : operation.credit),
+        amount: isNaN(operation.credit) ? operation.debit : operation.credit,
         currency: 'EUR',
         account: cozyAccount._id,
         metadata: {
@@ -352,7 +371,11 @@ async function saveOperations(account, cozyAccount) {
       cozyOperations.push(cozyOperation)
     }
 
-    updateOrCreate(cozyOperations, 'io.cozy.bank.operations', ['account', 'amount', 'date'])
+    updateOrCreate(cozyOperations, 'io.cozy.bank.operations', [
+      'account',
+      'amount',
+      'date'
+    ])
   }
 }
 
@@ -412,9 +435,9 @@ function getAccountType(string) {
 // Clean the operation amount string
 function cleanAmount(string) {
   // Remove everything which is not a ',', a '+/-', or a digit
-  string = string.replace(/[^0-9,\-\+]/, '')
+  string = string.replace(/[^0-9,\-+]/, '')
   // Replace ',' by '.'
-  string = string.replace(',','.')
+  string = string.replace(',', '.')
   // Get the number from the string
   return parseFloat(string)
 }
@@ -432,5 +455,7 @@ function cleanBalance(string) {
 // Convert a date string to a date
 function normalizeDate(date) {
   // String format: dd/mm/yyyy
-  return new Date(date.slice(6, 10) + '-' + date.slice(3, 5) + '-' + date.slice(0, 2) + 'Z')
+  return new Date(
+    date.slice(6, 10) + '-' + date.slice(3, 5) + '-' + date.slice(0, 2) + 'Z'
+  )
 }

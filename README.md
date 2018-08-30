@@ -1,4 +1,4 @@
-[Cozy][cozy] <YOUR SUPER NEW KONNECTOR NAME>
+[Cozy][cozy] <Fortuneo>
 =======================================
 
 What's Cozy?
@@ -11,7 +11,7 @@ What's Cozy?
 What is this konnector about ?
 ------------------------------
 
-This konnector retrieves your bills from Ascore Santé Prévoyance.
+This konnector retrieves your banking data from Fortuneo bank.
 
 ### Open a Pull-Request
 
@@ -61,7 +61,7 @@ You can reach the Cozy Community by:
 License
 -------
 
-cozy-konnector-ascoresante is developed by dohseven and distributed under the [AGPL v3 license][agpl-3.0].
+cozy-konnector-fortuneo is developed by dohseven and distributed under the [AGPL v3 license][agpl-3.0].
 
 [cozy]: https://cozy.io "Cozy Cloud"
 [agpl-3.0]: https://www.gnu.org/licenses/agpl-3.0.html
