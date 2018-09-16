@@ -358,13 +358,13 @@ async function saveOperations(account, cozyAccount) {
       const cozyOperation = {
         label: operation.label,
         type: 'none', // FixMe: Parse label to get the type?
-        date: operation.valueDate,
-        dateOperation: operation.operationDate,
-        dateImport: moment().toDate(),
+        date: operation.valueDate.toISOString(),
+        dateOperation: operation.operationDate.toISOString(),
         amount: isNaN(operation.credit) ? operation.debit : operation.credit,
         currency: 'EUR',
         account: cozyAccount._id,
         metadata: {
+          dateImport: moment().toDate().toISOString(),
           version: 1
         }
       }
