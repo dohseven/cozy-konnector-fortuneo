@@ -24,6 +24,7 @@ const request = requestFactory({
   jar: true
 })
 const moment = require('moment')
+const groupBy = require('lodash/groupBy')
 
 const baseUrl = 'https://mabanque.fortuneo.fr'
 const localizator = 'fr'
@@ -371,10 +372,21 @@ async function saveOperations(account, cozyAccount) {
       cozyOperations.push(cozyOperation)
     }
 
+    // Forge a vendorId which uniquely identifies the operation
+    // by concatenating the account number, the date as YYYY-MM-DD
+    // and the index of the operation during the day.
+    const groups = groupBy(cozyOperations, x => x.date.slice(0, 10))
+    Object.entries(groups).forEach(([date, group]) => {
+      group.forEach((operation, i) => {
+        operation.vendorId = `${cozyAccount.number}_${date}_${i}`
+      })
+    })
+
     updateOrCreate(cozyOperations, 'io.cozy.bank.operations', [
       'account',
       'amount',
-      'date'
+      'date',
+      'vendorId'
     ])
   }
 }
