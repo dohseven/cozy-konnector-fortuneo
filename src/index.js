@@ -365,7 +365,9 @@ async function saveOperations(account, cozyAccount) {
         currency: 'EUR',
         account: cozyAccount._id,
         metadata: {
-          dateImport: moment().toDate().toISOString(),
+          dateImport: moment()
+            .toDate()
+            .toISOString(),
           version: 1
         }
       }
