@@ -299,11 +299,7 @@ async function getOperations(account) {
           label: {
             sel: 'td:nth-of-type(4)',
             fn: $node =>
-              $node
-                .clone() // Clone the element
-                .children() // Select all the children
-                .remove() // Remove all the children
-                .end() // Again go back to selected element
+              ($node.children().length ? $node.find('div') : $node) // Get child if necessary
                 .text() // Get text
                 .replace(/\n|\t/gm, '') // Trim text of extra characters
           },
