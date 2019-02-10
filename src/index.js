@@ -350,24 +350,28 @@ async function saveOperations(account, cozyAccount) {
     const cozyOperations = []
 
     for (let operation of account.operations) {
-      // Create Cozy operations.
-      // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankoperations
-      const cozyOperation = {
-        label: operation.label,
-        type: 'none', // FixMe: Parse label to get the type?
-        date: operation.valueDate.toISOString(),
-        dateOperation: operation.operationDate.toISOString(),
-        amount: isNaN(operation.credit) ? operation.debit : operation.credit,
-        currency: 'EUR',
-        account: cozyAccount._id,
-        metadata: {
-          dateImport: moment()
-            .toDate()
-            .toISOString(),
-          version: 1
+      // Check if the valueDate is correctly set
+      // If this is not the case, the operation is pending and can be ignored until it is validated
+      if (operation.valueDate instanceof Date && !isNaN(operation.valueDate)) {
+        // Create Cozy operations.
+        // See https://github.com/cozy/cozy-doctypes/blob/master/docs/io.cozy.bank.md#iocozybankoperations
+        const cozyOperation = {
+          label: operation.label,
+          type: 'none', // FixMe: Parse label to get the type?
+          date: operation.valueDate.toISOString(),
+          dateOperation: operation.operationDate.toISOString(),
+          amount: isNaN(operation.credit) ? operation.debit : operation.credit,
+          currency: 'EUR',
+          account: cozyAccount._id,
+          metadata: {
+            dateImport: moment()
+              .toDate()
+              .toISOString(),
+            version: 1
+          }
         }
+        cozyOperations.push(cozyOperation)
       }
-      cozyOperations.push(cozyOperation)
     }
 
     // Forge a vendorId which uniquely identifies the operation
