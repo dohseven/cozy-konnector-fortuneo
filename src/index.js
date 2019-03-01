@@ -26,6 +26,7 @@ const request = requestFactory({
 const moment = require('moment')
 const groupBy = require('lodash/groupBy')
 
+const konnectorName = 'cozy-konnector-fortuneo'
 const baseUrl = 'https://mabanque.fortuneo.fr'
 const localizator = 'fr'
 const identificationUrl = `${baseUrl}/${localizator}/identification.jsp`
@@ -198,6 +199,10 @@ async function addOrUpdateAccounts(accounts) {
       number: account.number,
       metadata: {
         version: 1
+      },
+      cozyMetadata: {
+        createdByApp: konnectorName,
+        updatedAt: new Date()
       }
     }
     cozyAccounts.push(cozyAccount)
