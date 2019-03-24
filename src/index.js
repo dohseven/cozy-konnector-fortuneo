@@ -88,7 +88,7 @@ function parseAccounts($) {
     $,
     {
       number: {
-        sel: 'a.numero_compte',
+        sel: 'a>div',
         fn: $node =>
           $node
             .clone() // Clone the element
